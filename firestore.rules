@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper to validate basic NIK and dynamic IDs
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Registrations collection
+    match /registrations/{registrationId} {
+      allow create: if isValidId(registrationId)
+        && request.resource.data.nik is string
+        && request.resource.data.name is string
+        && request.resource.data.address is string
+        && request.resource.data.kabKota is string
+        && request.resource.data.color is string;
+      
+      // Allow participants to get their card using direct NIK lookups and Admin to read all
+      allow get: if true;
+      allow list: if true; // In development / admin mode allows general reporting
+      allow update, delete: if true; // Admin can modify in dasbor
+    }
+
+    // Attendance records
+    match /attendance/{attendanceId} {
+      allow create: if isValidId(attendanceId)
+        && request.resource.data.nik is string
+        && request.resource.data.day is number
+        && request.resource.data.signatureBase64 is string;
+        
+      allow get, list: if true;
+      allow update, delete: if true;
+    }
+
+    // Settings document
+    match /settings/{settingsId} {
+      allow read: if true; // Event metadata is public for frontend display
+      allow write: if true; // Admin panel sets this with local logic validation
+    }
+  }
+}

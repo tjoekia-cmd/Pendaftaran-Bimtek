@@ -1,0 +1,9 @@
+{
+  "apiKey": "INITIAL_MOCK_KEY_REPLACE_ME_VIA_FIREBASE_SETUP",
+  "authDomain": "react-bimtek-sumbar.firebaseapp.com",
+  "projectId": "react-bimtek-sumbar",
+  "storageBucket": "react-bimtek-sumbar.appspot.com",
+  "messagingSenderId": "000000000000",
+  "appId": "1:000000000000:web:0000000000000000000000",
+  "firestoreDatabaseId": "(default)"
+}

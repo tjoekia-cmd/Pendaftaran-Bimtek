@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;750;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+@layer utilities {
+  .animate-spin-slow {
+    animation: spin 30s linear infinite;
+  }
+}
+
+/* Custom CSS Print Directives for West Sumatra Tourism Collective Reports */
+@media print {
+  @page {
+    size: portrait;
+    margin: 1cm !important;
+  }
+
+  /* Make sure everything except print pages are hidden from printed PDFs */
+  body, html {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11pt !important;
+  }
+  
+  header, nav, button, aside, select, input, textarea, .no-print, #root > div > header, #root > div > main > div:not(.print-page) {
+    display: none !important;
+  }
+  
+  #root, .max-w-7xl, .lg:col-span-9 {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+  }
+
+  .print-page {
+    display: block !important;
+    position: relative !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 5% 0 !important;
+    width: 100% !important;
+  }
+}
