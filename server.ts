@@ -10,8 +10,8 @@ const app = express();
 const PORT = 3000;
 
 // Set body parser limits for KTP image base64 uploads
-app.use(express.json({ limit: "15mb" }));
-app.use(express.urlencoded({ limit: "15mb", extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Initialize the official Google Gen AI Client on the server side
 // API Key is read from process.env.GEMINI_API_KEY (handled securely on server)
@@ -103,6 +103,17 @@ app.post("/api/scan-ktp", async (req, res) => {
     console.error("OCR scanning error:", error);
     return res.status(500).json({ error: error?.message || "Failed to parse KTP identity verification data" });
   }
+});
+
+// Capture any JSON or middleware parsing failures and return them as JSON (never HTML)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Express API error caught:", err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || err.statusCode || 500).json({
+    error: err.message || "Terjadi kesalahan internal pada server kami."
+  });
 });
 
 // Configure Vite middleware or static serving

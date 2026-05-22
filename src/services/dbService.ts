@@ -46,6 +46,20 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function cleanUndefined<T extends Record<string, any>>(obj: T): T {
+  const clean: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        clean[key] = cleanUndefined(value);
+      } else {
+        clean[key] = value;
+      }
+    }
+  }
+  return clean as T;
+}
+
 // Interfaces
 export interface Registration {
   id: string;
@@ -57,6 +71,7 @@ export interface Registration {
   color: string;
   ktpBase64?: string;
   registeredAt: string;
+  signatureBase64?: string;
 }
 
 export interface Attendance {
@@ -75,6 +90,7 @@ export interface AppSettings {
   gasLink: string;
   startDate?: string;
   eventLocation?: string;
+  cardTemplateBase64?: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -94,6 +110,96 @@ const LS_KEYS = {
 };
 
 export const dbService = {
+  // SETTINGS SUBSCRIBER (REAL-TIME)
+  subscribeSettings(callback: (settings: AppSettings) => void): () => void {
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, "settings", "default");
+        return onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            callback(docSnap.data() as AppSettings);
+          } else {
+            setDoc(docRef, DEFAULT_SETTINGS).then(() => {
+              callback(DEFAULT_SETTINGS);
+            });
+          }
+        }, (error) => {
+          console.error("Firestore settings onSnapshot error:", error);
+          callback(this.getLocalSettings());
+        });
+      } catch (err) {
+        console.warn("Settings subscription failed:", err);
+        callback(this.getLocalSettings());
+        return () => {};
+      }
+    } else {
+      callback(this.getLocalSettings());
+      return () => {};
+    }
+  },
+
+  // REGISTRATIONS SUBSCRIBER (REAL-TIME)
+  subscribeRegistrations(callback: (registrations: Registration[]) => void): () => void {
+    if (isFirebaseConfigured && db) {
+      try {
+        const colRef = collection(db, "registrations");
+        return onSnapshot(colRef, (colSnap) => {
+          const data: Registration[] = [];
+          colSnap.forEach((docSnap) => {
+            data.push(docSnap.data() as Registration);
+          });
+          const sorted = data.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
+          
+          // Sync live data to local cache to ensure exact consistency (important for deleted records)
+          localStorage.setItem(LS_KEYS.REGISTRATIONS, JSON.stringify(sorted));
+          
+          callback(sorted);
+        }, (error) => {
+          console.error("Firestore registrations onSnapshot error:", error);
+          callback(this.getLocalRegistrations());
+        });
+      } catch (err) {
+        console.warn("Registrations subscription failed:", err);
+        callback(this.getLocalRegistrations());
+        return () => {};
+      }
+    } else {
+      callback(this.getLocalRegistrations());
+      return () => {};
+    }
+  },
+
+  // ATTENDANCE SUBSCRIBER (REAL-TIME)
+  subscribeAttendance(callback: (attendance: Attendance[]) => void): () => void {
+    if (isFirebaseConfigured && db) {
+      try {
+        const colRef = collection(db, "attendance");
+        return onSnapshot(colRef, (colSnap) => {
+          const data: Attendance[] = [];
+          colSnap.forEach((docSnap) => {
+            data.push(docSnap.data() as Attendance);
+          });
+          const sorted = data.sort((a, b) => new Date(b.attendedAt).getTime() - new Date(a.attendedAt).getTime());
+          
+          // Sync live data to local cache
+          localStorage.setItem(LS_KEYS.ATTENDANCE, JSON.stringify(sorted));
+          
+          callback(sorted);
+        }, (error) => {
+          console.error("Firestore attendance onSnapshot error:", error);
+          callback(this.getLocalAttendance());
+        });
+      } catch (err) {
+        console.warn("Attendance subscription failed:", err);
+        callback(this.getLocalAttendance());
+        return () => {};
+      }
+    } else {
+      callback(this.getLocalAttendance());
+      return () => {};
+    }
+  },
+
   // SETTINGS
   async getSettings(): Promise<AppSettings> {
     if (isFirebaseConfigured && db) {
@@ -139,7 +245,8 @@ export const dbService = {
       const path = "settings/default";
       try {
         const docRef = doc(db, "settings", "default");
-        await setDoc(docRef, settings);
+        const cleanData = cleanUndefined(settings);
+        await setDoc(docRef, cleanData);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, path);
       }
@@ -156,7 +263,8 @@ export const dbService = {
       const path = `registrations/${reg.id}`;
       try {
         const docRef = doc(db, "registrations", reg.id);
-        await setDoc(docRef, reg);
+        const cleanData = cleanUndefined(reg);
+        await setDoc(docRef, cleanData);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, path);
       }
@@ -229,7 +337,8 @@ export const dbService = {
       const path = `attendance/${att.id}`;
       try {
         const docRef = doc(db, "attendance", att.id);
-        await setDoc(docRef, att);
+        const cleanData = cleanUndefined(att);
+        await setDoc(docRef, cleanData);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, path);
       }

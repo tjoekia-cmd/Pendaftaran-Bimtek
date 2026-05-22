@@ -1,9 +1,10 @@
 {
-  "apiKey": "INITIAL_MOCK_KEY_REPLACE_ME_VIA_FIREBASE_SETUP",
-  "authDomain": "react-bimtek-sumbar.firebaseapp.com",
-  "projectId": "react-bimtek-sumbar",
-  "storageBucket": "react-bimtek-sumbar.appspot.com",
-  "messagingSenderId": "000000000000",
-  "appId": "1:000000000000:web:0000000000000000000000",
-  "firestoreDatabaseId": "(default)"
+  "projectId": "gen-lang-client-0722921440",
+  "appId": "1:316430276753:web:1ddc8f7dc1b079f7cec730",
+  "apiKey": "AIzaSyDFFhlCwPZjVN3qR8hM38Rkr_hsYXaXBgg",
+  "authDomain": "gen-lang-client-0722921440.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-6aac2d9e-8a7c-4633-8d22-db91ce1d963b",
+  "storageBucket": "gen-lang-client-0722921440.firebasestorage.app",
+  "messagingSenderId": "316430276753",
+  "measurementId": ""
 }

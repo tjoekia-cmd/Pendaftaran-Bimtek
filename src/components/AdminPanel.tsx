@@ -35,6 +35,54 @@ interface AdminPanelProps {
   onResetAllData: () => Promise<void>;
 }
 
+const compressTemplateImage = (
+  base64Str: string,
+  maxWidth = 1200,
+  maxHeight = 800,
+  quality = 0.75
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(base64Str);
+        return;
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const compressedBase64 = canvas.toDataURL("image/jpeg", quality);
+      resolve(compressedBase64);
+    };
+    img.onerror = () => {
+      reject(new Error("Gagal memproses gambar untuk kompresi."));
+    };
+  });
+};
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   settings,
   registrations,
@@ -138,9 +186,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const base64 = e.target?.result as string;
-      setCardTemplateBase64(base64);
+      try {
+        const compressed = await compressTemplateImage(base64);
+        setCardTemplateBase64(compressed);
+      } catch (err) {
+        setTemplateUploadError("Gagal mengompresi gambar template.");
+      }
     };
     reader.onerror = () => {
       setTemplateUploadError("Gagal membaca gambar.");

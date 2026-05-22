@@ -163,37 +163,29 @@ export default function App() {
   const [globalError, setGlobalError] = useState("");
   const [globalSuccess, setGlobalSuccess] = useState("");
 
-  // Load initial settings, registrations, and attendance on startup
+  // Real-time live synchronization listeners backed by Firebase onSnapshot
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const setSnap = await dbService.getSettings();
-        setSettings(setSnap);
+    const unsubscribeSettings = dbService.subscribeSettings((updatedSettings) => {
+      setSettings(updatedSettings);
+    });
 
-        const regSnap = await dbService.getRegistrations();
-        setRegistrations(regSnap);
+    const unsubscribeRegistrations = dbService.subscribeRegistrations((updatedRegs) => {
+      setRegistrations(updatedRegs);
+    });
 
-        const attSnap = await dbService.getAttendanceList();
-        setAttendance(attSnap);
-      } catch (err) {
-        console.warn("Error loading database context:", err);
-      }
+    const unsubscribeAttendance = dbService.subscribeAttendance((updatedAtts) => {
+      setAttendance(updatedAtts);
+    });
+
+    return () => {
+      unsubscribeSettings();
+      unsubscribeRegistrations();
+      unsubscribeAttendance();
     };
-    loadData();
   }, []);
 
-  // Sync state after CRUD deletions or additions
-  const reloadData = async () => {
-    try {
-      const regSnap = await dbService.getRegistrations();
-      setRegistrations(regSnap);
-
-      const attSnap = await dbService.getAttendanceList();
-      setAttendance(attSnap);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  // Redundant data synchronizer (now handled fully in real-time)
+  const reloadData = async () => {};
 
   const handleKtpScanned = (data: {
     nik: string;
@@ -225,6 +217,42 @@ export default function App() {
 
     if (!hasRegDrawn) {
       setGlobalError("Harap berikan tanda tangan digital Anda terlebih dahulu.");
+      return;
+    }
+
+    const normalizedNikInput = formNik.trim().replace(/\D/g, "");
+    const normalizedPhoneInput = formPhone.trim().replace(/\D/g, "");
+
+    // Normalization helper for Indonesian telephone formats
+    const normalizePhoneForComparison = (p: string) => {
+      const digits = p.replace(/\D/g, "");
+      if (digits.startsWith("62")) {
+        return "0" + digits.substring(2);
+      }
+      return digits;
+    };
+
+    const cleanPhoneInput = normalizePhoneForComparison(normalizedPhoneInput);
+
+    // 1. Check duplicate NIK
+    const isNikDuplicate = registrations.some((reg) => {
+      const existingNik = reg.nik.trim().replace(/\D/g, "");
+      return existingNik === normalizedNikInput && normalizedNikInput !== "";
+    });
+
+    if (isNikDuplicate) {
+      setGlobalError(`Gagal Mendaftar: NIK ${formNik.trim()} sudah terdaftar sebelumnya.`);
+      return;
+    }
+
+    // 2. Check duplicate Phone / WhatsApp
+    const isPhoneDuplicate = registrations.some((reg) => {
+      const existingPhone = normalizePhoneForComparison(reg.phone || "");
+      return existingPhone === cleanPhoneInput && cleanPhoneInput !== "";
+    });
+
+    if (isPhoneDuplicate) {
+      setGlobalError(`Gagal Mendaftar: Nomor HP / WhatsApp ${formPhone.trim()} sudah terdaftar sebelumnya.`);
       return;
     }
 
@@ -279,7 +307,14 @@ export default function App() {
       }, 5000);
     } catch (err: any) {
       console.error("Failure submitting registration:", err);
-      setGlobalError("Gagal menyelesaikan pendaftaran. Periksa koneksi Firestore Anda.");
+      let errMsg = err.message || "";
+      if (typeof errMsg === "string" && errMsg.includes('{"error":')) {
+        try {
+          const parsed = JSON.parse(errMsg);
+          errMsg = parsed.error || errMsg;
+        } catch (_) {}
+      }
+      setGlobalError(`Gagal menyelesaikan pendaftaran: ${errMsg || "Periksa koneksi Firestore Anda."}`);
     }
   };
 
@@ -299,6 +334,14 @@ export default function App() {
 
   const handleDeleteRegistration = async (id: string) => {
     await dbService.deleteRegistration(id);
+    if (recentRegistration && recentRegistration.id === id) {
+      setRecentRegistration(null);
+    }
+    if (searchedParticipant && searchedParticipant.id === id) {
+      setSearchedParticipant(null);
+      setCardSearchQuery("");
+      setSearchConducted(false);
+    }
     await reloadData();
   };
 
@@ -309,6 +352,10 @@ export default function App() {
 
   const handleResetAllData = async () => {
     await dbService.clearAllData();
+    setRecentRegistration(null);
+    setSearchedParticipant(null);
+    setCardSearchQuery("");
+    setSearchConducted(false);
     await reloadData();
   };
 

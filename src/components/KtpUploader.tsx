@@ -14,6 +14,57 @@ interface KtpUploaderProps {
   onError: (msg: string) => void;
 }
 
+const compressImage = (
+  base64Str: string,
+  maxWidth = 1000,
+  maxHeight = 1000,
+  quality = 0.7
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      // Calculate new dimensions preserving aspect ratio
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(base64Str); // Fallback to raw if canvas context fails
+        return;
+      }
+
+      // Draw white background
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Compress to jpeg format with chosen quality
+      const compressedBase64 = canvas.toDataURL("image/jpeg", quality);
+      resolve(compressedBase64);
+    };
+    img.onerror = (err) => {
+      reject(new Error("Gagal memproses gambar untuk kompresi."));
+    };
+  });
+};
+
 export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onError }) => {
   const [dragActive, setDragActive] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -50,10 +101,13 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const base64 = e.target?.result as string;
-      setPreview(base64);
+      const originalBase64 = e.target?.result as string;
 
       try {
+        setStatusMessage("Mengoptimalkan ukuran gambar...");
+        const compressedBase64 = await compressImage(originalBase64);
+        setPreview(compressedBase64);
+
         setStatusMessage("Mengekstrak data dari KTP...");
         const response = await fetch("/api/scan-ktp", {
           method: "POST",
@@ -61,18 +115,25 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            base64,
-            mimeType: file.type,
+            base64: compressedBase64,
+            mimeType: "image/jpeg",
           }),
         });
 
+        let data: any = {};
+        const responseText = await response.text();
+        try {
+          data = JSON.parse(responseText);
+        } catch (jsonErr) {
+          console.error("Failed to parse OCR response as JSON:", responseText);
+          throw new Error("Gagal memproses gambar KTP. Server mengembalikan format tak valid (HTML). Silakan coba ambil foto ulang dengan resolusi/ukuran gambar yang lebih kecil atau periksa koneksi.");
+        }
+
         if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || "Gagal memproses gambar KTP");
+          throw new Error(data.error || "Gagal memproses gambar KTP");
         }
 
         setStatusMessage("Menganalisis profil data...");
-        const data = await response.json();
 
         // Check if OCR yielded results or returned empty
         if (!data.nik || !data.name) {
@@ -86,7 +147,7 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
           address: data.address || "",
           kabKota: data.kabKota || "Tidak Terdeteksi",
           color: data.color || "#0F6251", // Fallback color
-          ktpBase64: base64,
+          ktpBase64: compressedBase64,
         });
       } catch (err: any) {
         console.error("OCR parse exception:", err);
