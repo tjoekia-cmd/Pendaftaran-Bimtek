@@ -70,9 +70,11 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [uploadMode, setUploadMode] = useState<"ktp" | "selfie">("ktp");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const selfieCameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -108,50 +110,65 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
         const compressedBase64 = await compressImage(originalBase64);
         setPreview(compressedBase64);
 
-        setStatusMessage("Mengekstrak data dari KTP...");
-        const response = await fetch("/api/scan-ktp", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            base64: compressedBase64,
-            mimeType: "image/jpeg",
-          }),
-        });
+        if (uploadMode === "selfie") {
+          setStatusMessage("Menyimpan foto selfie...");
+          // We bypass OCR and call onScanComplete directly as a selfie backup
+          onScanComplete({
+            nik: "",
+            name: "",
+            address: "",
+            kabKota: "",
+            color: "#0F6251", // Classic emerald default
+            ktpBase64: compressedBase64,
+            isSelfie: true,
+          });
+        } else {
+          setStatusMessage("Mengekstrak data dari KTP...");
+          const response = await fetch("/api/scan-ktp", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              base64: compressedBase64,
+              mimeType: "image/jpeg",
+            }),
+          });
 
-        let data: any = {};
-        const responseText = await response.text();
-        try {
-          data = JSON.parse(responseText);
-        } catch (jsonErr) {
-          console.error("Failed to parse OCR response as JSON:", responseText);
-          throw new Error("Gagal memproses gambar KTP. Server mengembalikan format tak valid (HTML). Silakan coba ambil foto ulang dengan resolusi/ukuran gambar yang lebih kecil atau periksa koneksi.");
+          let data: any = {};
+          const responseText = await response.text();
+          try {
+            data = JSON.parse(responseText);
+          } catch (jsonErr) {
+            console.error("Failed to parse OCR response as JSON:", responseText);
+            throw new Error("Gagal memproses gambar KTP. Server mengembalikan format tak valid (HTML). Silakan coba ambil foto ulang dengan resolusi/ukuran gambar yang lebih kecil atau periksa koneksi.");
+          }
+
+          if (!response.ok) {
+            throw new Error(data.error || "Gagal memproses gambar KTP");
+          }
+
+          setStatusMessage("Menganalisis profil data...");
+
+          // Check if OCR yielded results or returned empty
+          if (!data.nik || !data.name) {
+            throw new Error("Gagal mendeteksi NIK atau Nama secara otomatis. Silakan masukkan data secara manual pada formulir atau unggah foto KTP ulang dengan pencahayaan yang lebih jelas.");
+          }
+
+          // Successfully scanned KTP
+          onScanComplete({
+            nik: data.nik,
+            name: data.name,
+            address: data.address || "",
+            kabKota: data.kabKota || "Tidak Terdeteksi",
+            color: data.color || "#0F6251", // Fallback color
+            ktpBase64: compressedBase64,
+            isSelfie: false,
+          });
         }
-
-        if (!response.ok) {
-          throw new Error(data.error || "Gagal memproses gambar KTP");
-        }
-
-        setStatusMessage("Menganalisis profil data...");
-
-        // Check if OCR yielded results or returned empty
-        if (!data.nik || !data.name) {
-          throw new Error("Gagal mendeteksi NIK atau Nama secara otomatis. Silakan masukkan data secara manual pada formulir atau unggah foto KTP ulang dengan pencahayaan yang lebih jelas.");
-        }
-
-        // Successfully scanned
-        onScanComplete({
-          nik: data.nik,
-          name: data.name,
-          address: data.address || "",
-          kabKota: data.kabKota || "Tidak Terdeteksi",
-          color: data.color || "#0F6251", // Fallback color
-          ktpBase64: compressedBase64,
-        });
       } catch (err: any) {
         console.error("OCR parse exception:", err);
-        onError(err?.message || "Koneksi terputus saat memproses KTP. Silakan coba kembali.");
+        onError(err?.message || "Koneksi terputus saat memproses gambar. Silakan coba kembali.");
         setPreview(null);
       } finally {
         setLoading(false);
@@ -160,7 +177,7 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
     };
 
     reader.onerror = () => {
-      onError("Gagal membaca berkas KTP.");
+      onError("Gagal membaca berkas gambar.");
       setLoading(false);
     };
 
@@ -193,13 +210,43 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
 
   const triggerCameraInput = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (cameraInputRef.current) {
+    if (uploadMode === "selfie" && selfieCameraInputRef.current) {
+      selfieCameraInputRef.current.click();
+    } else if (cameraInputRef.current) {
       cameraInputRef.current.click();
     }
   };
 
   return (
     <div className="w-full">
+      {/* Mode Switcher Tabs */}
+      <div className="flex border border-gray-100 mb-5 p-1 bg-slate-100 rounded-2xl">
+        <button
+          type="button"
+          onClick={() => { if (!loading) { setUploadMode("ktp"); setPreview(null); } }}
+          disabled={loading}
+          className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+            uploadMode === "ktp"
+              ? "bg-white text-emerald-800 shadow-sm border border-emerald-500/10"
+              : "text-gray-500 hover:text-gray-700 hover:bg-slate-200/50"
+          } ${loading && "opacity-50 cursor-not-allowed"}`}
+        >
+          <span>📷 Scan KTP Otomatis</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (!loading) { setUploadMode("selfie"); setPreview(null); } }}
+          disabled={loading}
+          className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+            uploadMode === "selfie"
+              ? "bg-white text-emerald-800 shadow-sm border border-emerald-500/10"
+              : "text-gray-500 hover:text-gray-700 hover:bg-slate-200/50"
+          } ${loading && "opacity-50 cursor-not-allowed"}`}
+        >
+          <span>🤳 Foto Selfie / Profil</span>
+        </button>
+      </div>
+
       {/* Hidden input for regular file upload */}
       <input
         ref={fileInputRef}
@@ -210,13 +257,24 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
         disabled={loading}
       />
 
-      {/* Hidden input to directly capture photo from device camera */}
+      {/* Hidden input to directly capture photo from device camera (back camera environment for KTP) */}
       <input
         ref={cameraInputRef}
         type="file"
         className="hidden"
         accept="image/*"
         capture="environment"
+        onChange={handleChange}
+        disabled={loading}
+      />
+
+      {/* Hidden input to directly capture photo from device camera (front camera user for Selfie) */}
+      <input
+        ref={selfieCameraInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*"
+        capture="user"
         onChange={handleChange}
         disabled={loading}
       />
@@ -243,14 +301,22 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
               className="flex flex-col items-center text-center space-y-5"
             >
               <div className="p-4 bg-emerald-50 text-emerald-600 rounded-full shadow-inner">
-                <UploadCloud className="w-10 h-10 text-emerald-600" />
+                {uploadMode === "ktp" ? (
+                  <UploadCloud className="w-10 h-10 text-emerald-600" />
+                ) : (
+                  <Camera className="w-10 h-10 text-emerald-600" />
+                )}
               </div>
               <div>
                 <p className="text-base font-bold text-gray-800">
-                  Ambil Foto atau Unggah KTP Anda
+                  {uploadMode === "ktp"
+                    ? "Ambil Foto atau Unggah KTP Anda"
+                    : "Ambil Foto Selfie / Profil Anda"}
                 </p>
-                <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                  Silakan pilih opsi pengambilan foto KTP di bawah ini untuk memulai pengisian data secara otomatis.
+                <p className="text-xs text-gray-500 mt-1 max-w-sm leading-relaxed">
+                  {uploadMode === "ktp"
+                    ? "Silakan pilih opsi pengambilan foto KTP di bawah ini untuk memulai pengisian data secara otomatis."
+                    : "Peserta tidak membawa KTP? Tidak masalah! Ambil foto selfie atau unggah pasfoto profil sebagai identitas visual Anda."}
                 </p>
               </div>
 
@@ -262,7 +328,11 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
                   className="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all active:scale-95 shadow-md shadow-emerald-600/10"
                 >
                   <Camera className="w-4 h-4" />
-                  <span>Ambil Foto KTP (Kamera)</span>
+                  <span>
+                    {uploadMode === "ktp"
+                      ? "Ambil Foto KTP (Kamera Belakang)"
+                      : "Ambil Foto Selfie (Kamera Depan)"}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -270,7 +340,11 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
                   className="flex items-center justify-center space-x-2 bg-white hover:bg-slate-50 text-gray-700 font-bold px-4 py-2.5 rounded-xl text-xs transition-all active:scale-95 border border-gray-200 shadow-sm"
                 >
                   <FolderOpen className="w-4 h-4 text-gray-500" />
-                  <span>Pilih File KTP (Galeri)</span>
+                  <span>
+                    {uploadMode === "ktp"
+                      ? "Pilih File KTP (Galeri/File)"
+                      : "Pilih Foto Selfie (Galeri/File)"}
+                  </span>
                 </button>
               </div>
             </motion.div>
@@ -286,7 +360,7 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
               </div>
               <div className="space-y-2">
                 <p className="text-base font-bold text-emerald-800 animate-pulse">
-                  Sedang Pemrosesan Dokumen...
+                  {uploadMode === "ktp" ? "Menganalisis Dokumen..." : "Memproses Foto Anda..."}
                 </p>
                 <p className="text-xs text-gray-600 max-w-xs">
                   {statusMessage}
@@ -305,14 +379,16 @@ export const KtpUploader: React.FC<KtpUploaderProps> = ({ onScanComplete, onErro
               animate={{ opacity: 1, scale: 1 }}
               className="flex flex-col items-center text-center space-y-4"
             >
-              <div className="w-52 h-32 rounded-xl overflow-hidden border-2 border-emerald-600 shadow-md relative">
-                <img src={preview!} alt="KTP preview" className="w-full h-full object-cover" />
+              <div className={`w-52 h-32 rounded-xl overflow-hidden border-2 border-emerald-600 shadow-md relative ${uploadMode === "selfie" && "aspect-square w-32 h-32 rounded-full"}`}>
+                <img src={preview!} alt="Preview" className="w-full h-full object-cover" />
                 <div className="absolute top-2 right-2 bg-emerald-600 text-white rounded-full p-1 opacity-90 shadow">
                   <CheckCircle className="w-4 h-4" />
                 </div>
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-800 font-sans">KTP Berhasil Dimuat</p>
+                <p className="text-sm font-bold text-gray-800 font-sans">
+                  {uploadMode === "ktp" ? "KTP Berhasil Dimuat" : "Foto Selfie Berhasil Dimuat"}
+                </p>
                 <p className="text-xs text-gray-500 mt-1">Ingin mengulang? Pilih opsi di bawah ini:</p>
               </div>
 

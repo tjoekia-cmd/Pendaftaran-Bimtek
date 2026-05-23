@@ -257,7 +257,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
             </p>
           </div>
 
-          {/* CARD BOTTOM SECTION: BARCODE & FOOTER STAMP */}
+           {/* CARD BOTTOM SECTION: BARCODE & FOOTER STAMP */}
           <div
             className="relative z-10 pt-4 rounded-2xl p-4"
             style={{
@@ -266,7 +266,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
               border: "1px solid rgba(255, 255, 255, 0.2)",
             }}
           >
-            <BarcodeGenerator value={registration.nik} height={38} />
+            <BarcodeGenerator value={registration.nik || registration.phone} height={38} />
             <div
               className="text-center mt-2 pt-2 flex items-center justify-end text-[9px] uppercase tracking-widest font-semibold font-mono"
               style={{

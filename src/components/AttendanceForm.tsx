@@ -25,15 +25,17 @@ export const AttendanceForm: React.FC<AttendanceFormProps> = ({
   const [success, setSuccess] = useState(false);
   const [errorText, setErrorText] = useState("");
 
-  // Check if value matches registered NIK OR No. HP/WhatsApp
+  // Check if value matches registered NIK OR No. HP/WhatsApp OR Name
   useEffect(() => {
     const cleanVal = inputValue.trim();
-    if (cleanVal.length >= 8) {
-      const match = registrations.find(
-        (reg) => 
-          (reg.nik || "").replace(/\D/g, "") === cleanVal.replace(/\D/g, "") ||
-          (reg.phone && reg.phone.replace(/[^0-9]/g, "") === cleanVal.replace(/[^0-9]/g, ""))
-      );
+    if (cleanVal.length >= 3) {
+      const match = registrations.find((reg) => {
+        const cleanValDigits = cleanVal.replace(/\D/g, "");
+        const matchNik = reg.nik && cleanValDigits !== "" && reg.nik.replace(/\D/g, "").includes(cleanValDigits);
+        const matchPhone = reg.phone && cleanValDigits !== "" && reg.phone.replace(/[^0-9]/g, "").includes(cleanValDigits);
+        const matchName = reg.name && reg.name.toLowerCase().includes(cleanVal.toLowerCase());
+        return matchNik || matchPhone || matchName;
+      });
       if (match) {
         setParticipant(match);
         setErrorText("");
@@ -148,10 +150,11 @@ export const AttendanceForm: React.FC<AttendanceFormProps> = ({
 
     setSubmitting(true);
     try {
-      const attendanceId = `${participant.nik}_day_${selectedDay}`;
+      const recordKey = participant.nik.trim() ? participant.nik.trim() : participant.id;
+      const attendanceId = `${recordKey}_day_${selectedDay}`;
       const record: Attendance = {
         id: attendanceId,
-        nik: participant.nik,
+        nik: participant.nik.trim(),
         name: participant.name,
         day: selectedDay,
         signatureBase64,

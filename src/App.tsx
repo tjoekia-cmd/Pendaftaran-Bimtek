@@ -71,6 +71,7 @@ export default function App() {
   const [formKabKota, setFormKabKota] = useState("");
   const [formColor, setFormColor] = useState("#0F6251"); // Default Emerald/Teal
   const [formKtp, setFormKtp] = useState("");
+  const [isSelfieMode, setIsSelfieMode] = useState(false);
 
   // Signature states and refs for registration form
   const regCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -155,6 +156,7 @@ export default function App() {
     setFormKabKota("");
     setFormColor("#0F6251");
     setFormKtp("");
+    setIsSelfieMode(false);
     clearRegCanvas();
     setGlobalError("");
     setGlobalSuccess("");
@@ -194,24 +196,38 @@ export default function App() {
     kabKota: string;
     color: string;
     ktpBase64: string;
+    isSelfie?: boolean;
   }) => {
-    setFormNik(data.nik);
-    setFormName(data.name);
-    setFormAddress(data.address);
-    setFormKabKota(data.kabKota);
-    setFormColor(data.color);
-    setFormKtp(data.ktpBase64);
-    setGlobalError("");
-    setGlobalSuccess("Data KTP berhasil diekstraksi ke formulir secara otomatis!");
+    if (data.isSelfie) {
+      setIsSelfieMode(true);
+      setFormKtp(data.ktpBase64);
+      setGlobalError("");
+      setGlobalSuccess("Foto Selfie berhasil disimpan! Silakan lengkapi data diri Anda pada formulir di samping secara manual.");
+    } else {
+      setIsSelfieMode(false);
+      setFormNik(data.nik);
+      setFormName(data.name);
+      setFormAddress(data.address);
+      setFormKabKota(data.kabKota);
+      setFormColor(data.color);
+      setFormKtp(data.ktpBase64);
+      setGlobalError("");
+      setGlobalSuccess("Data KTP berhasil diekstraksi ke formulir secara otomatis!");
+    }
     setTimeout(() => {
       setGlobalSuccess("");
-    }, 4000);
+    }, 5000);
   };
 
   const handleManualRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formNik || !formName || !formPhone) {
-      setGlobalError("Harap lengkapi NIK, Nama Lengkap, dan No. HP / WhatsApp.");
+    const needsNik = !isSelfieMode;
+    if ((needsNik && !formNik) || !formName || !formPhone) {
+      if (needsNik) {
+        setGlobalError("Harap lengkapi NIK, Nama Lengkap, dan No. HP / WhatsApp.");
+      } else {
+        setGlobalError("Harap lengkapi Nama Lengkap dan No. HP / WhatsApp.");
+      }
       return;
     }
 
@@ -234,26 +250,30 @@ export default function App() {
 
     const cleanPhoneInput = normalizePhoneForComparison(normalizedPhoneInput);
 
-    // 1. Check duplicate NIK
-    const isNikDuplicate = registrations.some((reg) => {
-      const existingNik = reg.nik.trim().replace(/\D/g, "");
-      return existingNik === normalizedNikInput && normalizedNikInput !== "";
-    });
+    // 1. Check duplicate NIK (only if NIK is provided)
+    if (normalizedNikInput !== "") {
+      const isNikDuplicate = registrations.some((reg) => {
+        const existingNik = reg.nik.trim().replace(/\D/g, "");
+        return existingNik === normalizedNikInput;
+      });
 
-    if (isNikDuplicate) {
-      setGlobalError(`Gagal Mendaftar: NIK ${formNik.trim()} sudah terdaftar sebelumnya.`);
-      return;
+      if (isNikDuplicate) {
+        setGlobalError(`Gagal Mendaftar: NIK ${formNik.trim()} sudah terdaftar sebelumnya.`);
+        return;
+      }
     }
 
-    // 2. Check duplicate Phone / WhatsApp
-    const isPhoneDuplicate = registrations.some((reg) => {
-      const existingPhone = normalizePhoneForComparison(reg.phone || "");
-      return existingPhone === cleanPhoneInput && cleanPhoneInput !== "";
-    });
+    // 2. Check duplicate Phone / WhatsApp (except for empty inputs)
+    if (cleanPhoneInput !== "") {
+      const isPhoneDuplicate = registrations.some((reg) => {
+        const existingPhone = normalizePhoneForComparison(reg.phone || "");
+        return existingPhone === cleanPhoneInput;
+      });
 
-    if (isPhoneDuplicate) {
-      setGlobalError(`Gagal Mendaftar: Nomor HP / WhatsApp ${formPhone.trim()} sudah terdaftar sebelumnya.`);
-      return;
+      if (isPhoneDuplicate) {
+        setGlobalError(`Gagal Mendaftar: Nomor HP / WhatsApp ${formPhone.trim()} sudah terdaftar sebelumnya.`);
+        return;
+      }
     }
 
     try {
@@ -281,7 +301,7 @@ export default function App() {
       await dbService.addRegistration(newReg);
       setRecentRegistration(newReg);
       setSearchedParticipant(newReg);
-      setCardSearchQuery(newReg.nik);
+      setCardSearchQuery(newReg.nik ? newReg.nik : newReg.phone);
       setSearchConducted(true);
       
       // Update state listings
@@ -295,6 +315,7 @@ export default function App() {
       setFormKabKota("");
       setFormColor("#0F6251");
       setFormKtp("");
+      setIsSelfieMode(false);
       clearRegCanvas();
       
       setGlobalSuccess("Pendaftaran sukses! Kartu Peserta Anda berhasil dibuat.");
@@ -668,8 +689,8 @@ export default function App() {
                       <div className="space-y-6">
                         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
                           <div>
-                            <h2 className="text-base sm:text-lg font-extrabold text-gray-900">Upload KTP</h2>
-                            <p className="text-xs text-slate-500">Ambil foto KTP atau unggah berkas gambar secara langsung</p>
+                            <h2 className="text-base sm:text-lg font-extrabold text-gray-900">Identitas Visual</h2>
+                            <p className="text-xs text-slate-500">Scan KTP secara otomatis atau gunakan Foto Selfie jika tidak membawa KTP</p>
                           </div>
                           
                           <KtpUploader
@@ -688,15 +709,20 @@ export default function App() {
                         <form onSubmit={handleManualRegisterSubmit} className="space-y-4">
                           {/* NIK Input */}
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-gray-700 uppercase">NIK</label>
+                            <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                              <span>NIK {isSelfieMode ? "(Opsional)" : "(Wajib)"}</span>
+                              {isSelfieMode && (
+                                <span className="text-[10px] text-emerald-600 font-bold normal-case animate-pulse">Mode Selfie Aktif</span>
+                              )}
+                            </label>
                             <input
                               type="text"
                               maxLength={16}
                               value={formNik}
                               onChange={(e) => setFormNik(e.target.value.replace(/\D/g, ""))}
-                              placeholder="Masukkan 16 digit nomor NIK..."
+                              placeholder={isSelfieMode ? "Boleh kosong karena pakai Foto Selfie..." : "Masukkan 16 digit nomor NIK..."}
                               className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-slate-900 focus:outline-none focus:border-emerald-500 font-mono tracking-wider text-sm"
-                              required
+                              required={!isSelfieMode}
                             />
                           </div>
 
@@ -726,13 +752,32 @@ export default function App() {
                             />
                           </div>
 
-                          {/* Informational background states (prefilled via OCR) */}
-                          {formKabKota && (
-                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-[11px] text-gray-500 space-y-1">
-                              <div><strong>Domisili:</strong> {formKabKota}</div>
-                              {formAddress && <div><strong>Alamat:</strong> {formAddress}</div>}
-                            </div>
-                          )}
+                          {/* Kabupaten / Kota (Domisili) Input */}
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                              <span>Kabupaten / Kota (Domisili)</span>
+                              <span className="text-[10px] text-gray-400 font-normal normal-case">Prefill otomatis via KTP</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={formKabKota}
+                              onChange={(e) => setFormKabKota(e.target.value)}
+                              placeholder="Contoh: Kota Padang, Kab. Pesisir Selatan..."
+                              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-slate-900 focus:outline-none focus:border-emerald-500 text-sm font-semibold"
+                            />
+                          </div>
+
+                          {/* Alamat Lengkap Input */}
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700 uppercase">Alamat Lengkap (Asal)</label>
+                            <textarea
+                              value={formAddress}
+                              onChange={(e) => setFormAddress(e.target.value)}
+                              placeholder="Contoh: Jl. Diponegoro No. 25, Kel. Belakang Tangsi..."
+                              rows={2}
+                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-slate-900 focus:outline-none focus:border-emerald-500 text-sm font-semibold resize-none"
+                            />
+                          </div>
 
                           {/* Signature Pad */}
                           <div className="space-y-2 pt-1">
